@@ -1,0 +1,25 @@
+{
+  "tables": [
+    {
+      "supabase_table": "inventory",
+      "mongodb_collection": "inventory",
+      "primary_key": "id",
+      "sort_column": "created_at",
+      "enabled": true
+    },
+    {
+      "supabase_table": "orders",
+      "mongodb_collection": "orders",
+      "primary_key": "id",
+      "sort_column": "created_at",
+      "enabled": true
+    },
+    {
+      "supabase_table": "customers",
+      "mongodb_collection": "customers",
+      "primary_key": "id",
+      "sort_column": "created_at",
+      "enabled": false
+    }
+  ]
+}
