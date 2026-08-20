@@ -674,6 +674,88 @@ pytest tests/ -v
 
 ---
 
+---
+
+## 18. Laptop Inventory Integration
+
+This repository is the migration hub for the
+[laptop-inventory](https://github.com/harrysingh36036-debug/laptop-inventory)
+app. When Supabase free-tier usage crosses 90% the workflow moves **old history**
+to MongoDB, and the app keeps reading that history through the read API.
+
+### 18.1 What migrates
+
+`config/tables.json` is pre-configured for the app's schema:
+
+| Supabase table | Mongo collection | Migrates | Deleted from Supabase |
+|---|---|---|---|
+| `laptops` | `laptops` | only `status = 'Sold'` (old inventory) | ✅ after verification |
+| `transferlogs` | `transferlogs` | oldest first | ✅ after verification |
+| `sales` | `sales` | oldest first | ✅ after verification |
+| `purchases` | `purchases` | oldest first | ✅ after verification |
+| `repairs` | `repairs` | oldest first | ✅ after verification |
+| `stores` / `brands` / `vendors` / `customers` | same name | mirrored (reference data) | ❌ never deleted |
+
+Active "In Stock" / "In Transit" laptops stay in Supabase so live editing and
+Realtime keep working. The `where_clause` on `laptops` guarantees only sold
+records are moved; reference tables use `delete_from_source: false` so they are
+copied to MongoDB for the read API to join against but never removed.
+
+### 18.2 How the app still sees migrated data
+
+The frontend reads Supabase first. When a list is empty (the data has been
+migrated), `frontend/src/mongoApi.js` falls back to this repo's read-only API
+and merges the results, so old sales, transfers, purchases, repairs and sold
+laptops stay visible.
+
+```
+laptop-inventory (React, GitHub Pages)
+        │  VITE_SUPABASE_URL (live data + realtime)
+        ▼
+  Supabase ──(migrates oldest history when ≥90%)──► MongoDB
+        ▲                                                 │
+        │                    read-only REST API (FastAPI) │
+        └────────── VITE_MONGO_READ_API_URL ──────────────┘
+```
+
+### 18.3 Deploy the read API for free
+
+1. Create a free MongoDB Atlas M0 cluster and note `MONGODB_URI`.
+2. Push this repo to GitHub and connect it to **Render** (Render → New →
+   Blueprint → select this repo). `render.yaml` deploys
+   `src/read_api.py` on the free plan.
+3. Set these Render environment variables on first deploy: `MONGODB_URI`,
+   `MONGODB_DATABASE`, `READ_API_KEY`.
+4. Copy the HTTPS service URL into the laptop-inventory frontend:
+
+```
+VITE_MONGO_READ_API_URL=https://<service>.onrender.com
+VITE_MONGO_READ_API_KEY=<your READ_API_KEY>
+```
+
+Run it locally for testing: `uvicorn src.read_api:app --port 8000`.
+`/health` returns `{"ok":"true"}` and every `/api/*` endpoint accepts an
+optional `Authorization: Bearer <READ_API_KEY>` header.
+
+### 18.4 GitHub Secrets for this repo
+
+Add to **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|---|---|
+| `SUPABASE_URL` / `SUPABASE_KEY` | Supabase project URL / anon or service key |
+| `SUPABASE_DB_HOST` / `_PORT` / `_NAME` / `_USER` / `_PASSWORD` | direct Postgres connection (needed for `pg_database_size`) |
+| `SUPABASE_MAX_DB_SIZE_BYTES` | `524288000` (free tier, 500 MB) |
+| `MONGODB_URI` / `MONGODB_DATABASE` | Atlas connection string / database |
+| `MONGODB_MAX_SIZE_BYTES` | `536870912` (Atlas M0 free tier, 512 MB) |
+| `READ_API_KEY` | bearer token the app uses to call the read API |
+| `START_THRESHOLD` / `TARGET_THRESHOLD` | `90` / `50` (optional overrides) |
+
+All credentials come from the environment only — nothing is hardcoded or
+committed.
+
+---
+
 ## License
 
 MIT

@@ -79,6 +79,12 @@ SUPABASE_DB_PASSWORD: str = os.getenv("SUPABASE_DB_PASSWORD", "")
 MONGODB_URI: str = os.getenv("MONGODB_URI", "")
 MONGODB_DATABASE: str = os.getenv("MONGODB_DATABASE", "")
 
+# Optional destination capacity guard: when set (>0), migration refuses to
+# delete anything from Supabase once MongoDB usage reaches DESTINATION_SAFE_PCT
+# (default 95) of this size.  MongoDB Atlas M0 free tier = 512 MB.
+MONGODB_MAX_SIZE_BYTES: int = int(os.getenv("MONGODB_MAX_SIZE_BYTES", "0"))
+DESTINATION_SAFE_PCT: float = float(os.getenv("DESTINATION_SAFE_PCT", "95"))
+
 # ---------------------------------------------------------------------------
 # Optional AI
 # ---------------------------------------------------------------------------
@@ -94,11 +100,24 @@ AI_MODEL: str = os.getenv("AI_MODEL", "")
 
 @dataclass
 class TableConfig:
-    """Single table mapping between Supabase and MongoDB."""
+    """Single table mapping between Supabase and MongoDB.
+
+    ``where_clause`` is a raw SQL condition applied to the SELECT (and only the
+    SELECT — deletes always happen by primary key).  It lets a config migrate
+    only a subset of a table, e.g. ``status = 'Sold'`` for laptops.
+
+    ``delete_from_source`` controls whether the record is removed from Supabase
+    after it has been verified in MongoDB.  Set to ``False`` for small reference
+    tables (stores, brands, vendors, customers) that the app must keep live:
+    they are mirrored to MongoDB for the read API to join against, but never
+    deleted from Supabase.
+    """
     supabase_table: str
     mongodb_collection: str
     primary_key: str = "id"
     sort_column: str = "created_at"
+    where_clause: Optional[str] = None
+    delete_from_source: bool = True
     enabled: bool = True
 
 
@@ -119,6 +138,8 @@ def load_table_configs(config_path: Path | None = None) -> List[TableConfig]:
                 mongodb_collection=entry["mongodb_collection"],
                 primary_key=entry.get("primary_key", "id"),
                 sort_column=entry.get("sort_column", "created_at"),
+                where_clause=entry.get("where_clause"),
+                delete_from_source=entry.get("delete_from_source", True),
                 enabled=entry.get("enabled", True),
             )
         )

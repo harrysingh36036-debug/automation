@@ -1,17 +1,68 @@
 {
   "tables": [
     {
-      "supabase_table": "inventory",
-      "mongodb_collection": "inventory",
+      "supabase_table": "laptops",
+      "mongodb_collection": "laptops",
       "primary_key": "id",
       "sort_column": "created_at",
+      "where_clause": "status = 'Sold'",
+      "delete_from_source": true,
       "enabled": true
     },
     {
-      "supabase_table": "orders",
-      "mongodb_collection": "orders",
+      "supabase_table": "transferlogs",
+      "mongodb_collection": "transferlogs",
+      "primary_key": "id",
+      "sort_column": "changed_at",
+      "delete_from_source": true,
+      "enabled": true
+    },
+    {
+      "supabase_table": "sales",
+      "mongodb_collection": "sales",
+      "primary_key": "id",
+      "sort_column": "sold_at",
+      "delete_from_source": true,
+      "enabled": true
+    },
+    {
+      "supabase_table": "purchases",
+      "mongodb_collection": "purchases",
+      "primary_key": "id",
+      "sort_column": "purchased_at",
+      "delete_from_source": true,
+      "enabled": true
+    },
+    {
+      "supabase_table": "repairs",
+      "mongodb_collection": "repairs",
       "primary_key": "id",
       "sort_column": "created_at",
+      "delete_from_source": true,
+      "enabled": true
+    },
+    {
+      "supabase_table": "stores",
+      "mongodb_collection": "stores",
+      "primary_key": "id",
+      "sort_column": "created_at",
+      "delete_from_source": false,
+      "enabled": true
+    },
+    {
+      "supabase_table": "brands",
+      "mongodb_collection": "brands",
+      "primary_key": "id",
+      "sort_column": "created_at",
+      "delete_from_source": false,
+      "enabled": true
+    },
+    {
+      "supabase_table": "vendors",
+      "mongodb_collection": "vendors",
+      "primary_key": "id",
+      "sort_column": "created_at",
+      "delete_from_source": false,
       "enabled": true
     },
     {
@@ -19,7 +70,8 @@
       "mongodb_collection": "customers",
       "primary_key": "id",
       "sort_column": "created_at",
-      "enabled": false
+      "delete_from_source": false,
+      "enabled": true
     }
   ]
 }

@@ -56,6 +56,8 @@ jobs:
           # --- MongoDB ---
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
+          MONGODB_MAX_SIZE_BYTES: ${{ secrets.MONGODB_MAX_SIZE_BYTES }}
+          DESTINATION_SAFE_PCT: ${{ secrets.DESTINATION_SAFE_PCT }}
 
           # --- Thresholds ---
           START_THRESHOLD: ${{ secrets.START_THRESHOLD }}

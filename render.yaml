@@ -1,0 +1,25 @@
+# Render Blueprint — free-tier deploy for the read-only MongoDB API.
+# The migration itself runs in GitHub Actions and needs no hosting.
+#
+# Setup:
+#   1. Push this repo to GitHub and connect it to Render (Render -> New -> Blueprint).
+#   2. On first deploy Render asks for the env vars below — set them from your
+#      local .env (they are stored as Render secrets, never committed).
+#   3. The service starts with `uvicorn src.read_api:app`. Use the HTTPS URL
+#      it prints as VITE_MONGO_READ_API_URL in the laptop-inventory frontend.
+
+services:
+  - type: web
+    name: laptop-inventory-mongo-read
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.read_api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: MONGODB_URI
+        sync: false        # set in Render dashboard / on first deploy
+      - key: MONGODB_DATABASE
+        sync: false
+      - key: READ_API_KEY
+        sync: false

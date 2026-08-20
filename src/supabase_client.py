@@ -10,6 +10,7 @@ Table access is restricted to the tables listed in ``config/tables.json``.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 import psycopg2
@@ -40,12 +41,29 @@ def _get_connection():
     )
 
 
+def _sanitize_where_clause(clause: str | None) -> str | None:
+    """Validate a config-supplied SQL WHERE condition.
+
+    The clause comes from ``config/tables.json`` (trusted repository config,
+    not user input), but we still restrict it to a safe character set so a
+    typo can never inject arbitrary SQL into the migration queries.
+    """
+    if clause is None:
+        return None
+    if not clause.strip():
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9_ =<>!'.,()+\-]+", clause):
+        raise SupabaseClientError(f"Invalid where_clause: {clause!r}")
+    return clause
+
+
 def fetch_batch(
     table_name: str,
     primary_key: str = "id",
     sort_column: str = "created_at",
     batch_size: int | None = None,
     last_pk: Optional[Any] = None,
+    where_clause: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Fetch the next batch of records from a Supabase table.
 
@@ -65,6 +83,9 @@ def fetch_batch(
     last_pk:
         The primary key value of the last record from the previous batch.
         If ``None`` the fetch starts from the beginning.
+    where_clause:
+        Optional SQL condition (e.g. ``status = 'Sold'``) that restricts which
+        rows are migrated.  Deletes are still done by primary key.
 
     Returns
     -------
@@ -78,21 +99,34 @@ def fetch_batch(
         if not identifier.replace("_", "").isalnum():
             raise SupabaseClientError(f"Invalid identifier: {identifier}")
 
-    query = (
-        f'SELECT * FROM "{table_name}" '
-        f'ORDER BY "{sort_column}" ASC, "{primary_key}" ASC '
-        f"LIMIT %s"
-    )
-    params: list = [batch_size]
+    clause = _sanitize_where_clause(where_clause)
 
-    if last_pk is not None:
+    if last_pk is None:
+        base = f'SELECT * FROM "{table_name}"'
+        if clause:
+            base += f" WHERE {clause}"
+        query = base + f' ORDER BY "{sort_column}" ASC, "{primary_key}" ASC LIMIT %s'
+        params: list = [batch_size]
+    else:
+        # Cursor pagination: advance past (sort_column, primary_key) of last_pk.
+        if clause:
+            condition = (
+                f"({clause}) AND "
+                f'("{sort_column}" > (SELECT "{sort_column}" FROM "{table_name}" WHERE "{primary_key}" = %s) '
+                f'OR ("{sort_column}" = (SELECT "{sort_column}" FROM "{table_name}" WHERE "{primary_key}" = %s) '
+                f'AND "{primary_key}" > %s))'
+            )
+        else:
+            condition = (
+                f'("{sort_column}" > (SELECT "{sort_column}" FROM "{table_name}" WHERE "{primary_key}" = %s) '
+                f'OR ("{sort_column}" = (SELECT "{sort_column}" FROM "{table_name}" WHERE "{primary_key}" = %s) '
+                f'AND "{primary_key}" > %s))'
+            )
         query = (
             f'SELECT * FROM "{table_name}" '
-            f'WHERE ("{sort_column}" > (SELECT "{sort_column}" FROM "{table_name}" WHERE "{primary_key}" = %s)) '
-            f'OR ("{sort_column}" = (SELECT "{sort_column}" FROM "{table_name}" WHERE "{primary_key}" = %s) '
-            f'AND "{primary_key}" > %s) '
+            f"WHERE {condition} "
             f'ORDER BY "{sort_column}" ASC, "{primary_key}" ASC '
-            f'LIMIT %s'
+            f"LIMIT %s"
         )
         params = [last_pk, last_pk, last_pk, batch_size]
 

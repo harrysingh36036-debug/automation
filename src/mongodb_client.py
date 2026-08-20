@@ -130,6 +130,26 @@ def upsert_document(
         return False
 
 
+def find_document(
+    collection_name: str,
+    source_table: str,
+    source_id: str,
+) -> Optional[Dict[str, Any]]:
+    """Return the stored document for a migrated record, or ``None``."""
+    db = _get_db()
+    coll = db[collection_name]
+    filter_query = {
+        "_migration.source_system": "supabase",
+        "_migration.source_table": source_table,
+        "_migration.source_id": str(source_id),
+    }
+    try:
+        return coll.find_one(filter_query)
+    except PyMongoError as exc:
+        log_error(f"MongoDB lookup failed for {source_table}:{source_id}", exc)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Verification
 # ---------------------------------------------------------------------------

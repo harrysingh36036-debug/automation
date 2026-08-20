@@ -90,6 +90,7 @@ def process_batch(
         sort_column=table_config.sort_column,
         batch_size=config.BATCH_SIZE,
         last_pk=last_pk,
+        where_clause=table_config.where_clause,
     )
 
     if not records:
@@ -116,6 +117,32 @@ def process_batch(
                 source_table=table_config.supabase_table,
                 primary_key=table_config.primary_key,
             )
+
+            # 2b. Copy-only tables (delete_from_source=False): skip the write
+            #     when an identical, verified copy already exists.  Reference
+            #     tables like stores/brands are tiny but re-written every run,
+            #     so this keeps each run lean.
+            if not table_config.delete_from_source:
+                existing = mongodb_client.find_document(
+                    table_config.mongodb_collection,
+                    table_config.supabase_table,
+                    source_id,
+                )
+                if existing is not None:
+                    existing_hash = existing.get("_migration", {}).get("record_hash", "")
+                    if existing_hash == doc["_migration"]["record_hash"]:
+                        migrated += 1
+                        verified += 1
+                        _write_log(
+                            execution_id=execution_id,
+                            source_table=table_config.supabase_table,
+                            source_id=source_id,
+                            destination_collection=table_config.mongodb_collection,
+                            mongodb_status="verified",
+                            supabase_delete_status="kept_copy_only",
+                        )
+                        new_last_pk = record.get(table_config.primary_key)
+                        continue
 
             # 3. MongoDB upsert (idempotent).
             upsert_ok = _retry(
@@ -173,6 +200,20 @@ def process_batch(
                     mongodb_status="verified",
                     supabase_delete_status="dry_run_skipped",
                 )
+                continue
+
+            # 5b. Copy-only tables: never delete from Supabase.  The app keeps
+            #     reading these live; MongoDB holds a mirror for joins.
+            if not table_config.delete_from_source:
+                _write_log(
+                    execution_id=execution_id,
+                    source_table=table_config.supabase_table,
+                    source_id=source_id,
+                    destination_collection=table_config.mongodb_collection,
+                    mongodb_status="verified",
+                    supabase_delete_status="kept_copy_only",
+                )
+                new_last_pk = record.get(table_config.primary_key)
                 continue
 
             # 6. Delete from Supabase.
@@ -363,6 +404,22 @@ def run_migration() -> None:
             config.START_THRESHOLD,
         )
         return
+
+    # --- Destination capacity guard ---
+    # Never delete from Supabase if MongoDB itself is nearly full.  This keeps
+    # the free-tier promise "a record is never deleted before it is safe".
+    if config.MONGODB_MAX_SIZE_BYTES > 0:
+        try:
+            dest_pct = mongodb_client.get_destination_capacity_percentage(config.MONGODB_MAX_SIZE_BYTES)
+            logger.info("MongoDB destination usage: %.1f%%", dest_pct)
+            if not config.DRY_RUN and dest_pct >= config.DESTINATION_SAFE_PCT:
+                log_migration_stop(
+                    f"MongoDB {dest_pct:.1f}% >= safe {config.DESTINATION_SAFE_PCT}% — "
+                    "destination full, preserving Supabase records"
+                )
+                return
+        except Exception as exc:
+            log_error("Destination capacity check failed", exc)
 
     log_migration_start()
 
