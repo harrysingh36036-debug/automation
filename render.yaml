@@ -2,17 +2,25 @@
 # The migration itself runs in GitHub Actions and needs no hosting.
 #
 # Setup:
-#   1. Push this repo to GitHub and connect it to Render (Render -> New -> Blueprint).
+#   1. Push this repo to GitHub and connect it to Render (Render -> New -> Blueprint
+#      -> select this repo). Changes to main auto-deploy because autoDeploy is on.
 #   2. On first deploy Render asks for the env vars below — set them from your
 #      local .env (they are stored as Render secrets, never committed).
 #   3. The service starts with `uvicorn src.read_api:app`. Use the HTTPS URL
 #      it prints as VITE_MONGO_READ_API_URL in the laptop-inventory frontend.
+#
+# Free-tier notes:
+#   * The service sleeps after ~15 min of no traffic and wakes on the next
+#     request (a few seconds' delay). It is NOT charged.
+#   * Set the port via Render's $PORT (free web services already provide it).
 
 services:
   - type: web
     name: laptop-inventory-mongo-read
     runtime: python
     plan: free
+    branch: main
+    autoDeploy: true
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn src.read_api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
